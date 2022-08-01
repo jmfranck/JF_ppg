@@ -1,19 +1,11 @@
 """
-This demo demonstrates how to embed a matplotlib (mpl) plot 
-into a PyQt5 GUI application, including:
+started from Eli Bendersky (eliben@gmail.com), updated
+by Ondrej Holesovsky.  License: this code is in the
+public domain.
 
-* Using the navigation toolbar
-* Adding data to the plot
-* Dynamically modifying the plot's properties
-* Processing mpl events
-* Saving the plot to a file from a menu
-
-The main goal is to serve as a basis for developing rich PyQt GUI
-applications featuring mpl plots (using the mpl OO API).
-
-Eli Bendersky (eliben@gmail.com), updated by Ondrej Holesovsky.
-License: this code is in the public domain
-Last modified: 23.12.2019
+then use this:
+https://www.pythonguis.com/tutorials/pyqt-layouts/
+which is a good layout reference
 
 JF updated to plot a sine wave
 """
@@ -29,8 +21,7 @@ from matplotlib.figure import Figure
 
 import numpy as np
 
-
-class AppForm(QMainWindow):
+class TuningWindow(QMainWindow):
     def __init__(self, parent=None):
         QMainWindow.__init__(self, parent)
         self.setWindowTitle('Demo: PyQt with matplotlib')
@@ -39,8 +30,8 @@ class AppForm(QMainWindow):
         self.create_main_frame()
         self.create_status_bar()
 
-        self.textbox.setText('1 2 3 4')
         self.on_draw()
+        #self._n_times_run = 0
 
     def save_plot(self):
         file_choices = "PNG (*.png)|*.png"
@@ -60,7 +51,8 @@ class AppForm(QMainWindow):
         msg = """ A demo of using PyQt with matplotlib:
         
          * Use the matplotlib navigation bar
-         * Add values to the text box and press Enter (or click "Draw")
+         * Add values to the text box and press Enter
+         (or click "Re-Capture")
          * Show or hide the grid
          * Drag the slider to modify the width of the bars
          * Save the plot to a file using the File menu
@@ -68,6 +60,42 @@ class AppForm(QMainWindow):
         """
         QMessageBox.about(self, "About the demo", msg.strip())
     
+    def orig_zoom_limits(self):
+        for ini_val, w in [('9700000',self.textbox1),
+                ('9900000',self.textbox2)]:
+            w.setText(ini_val)
+            w.setMinimumWidth(8)
+            w.editingFinished.connect(self.on_textchange)
+            self.textboxes_vbox.addWidget(w)
+        return
+    def on_zoomclicked(self):
+        self._curzoomclicked = (str(self.slider_min.value()), str(self.slider_max.value()))
+        if (hasattr(self,'_prevzoomclicked') and
+                self._prevzoomclicked ==
+                self._curzoomclicked
+                ):
+            print("clicked zoom twice -- returning to orig!")
+            self.orig_zoom_limits()
+            self.on_textchange()
+            del self._prevzoomclicked
+            return
+        self.textbox1.setText(self._curzoomclicked[0])
+        self.textbox2.setText(self._curzoomclicked[1])
+        self.on_textchange()
+        self._prevzoomclicked = self._curzoomclicked
+        return
+    def on_textchange(self):
+        self.left_slider_lim = int(self.textbox1.text())
+        self.right_slider_lim = int(self.textbox2.text())
+        if self.right_slider_lim < self.left_slider_lim:
+            self.right_slider_lim = self.left_slider_lim+1
+        for w in [
+                self.slider_min,
+                self.slider_max]:
+            w.setRange(self.left_slider_lim,
+                    self.right_slider_lim) # requires integers!
+        return
+
     def on_pick(self, event):
         # The event received here is of the type
         # matplotlib.backend_bases.PickEvent
@@ -81,18 +109,22 @@ class AppForm(QMainWindow):
         QMessageBox.information(self, "Click!", msg)
     
     def generate_data(self):
+        #self._n_times_run += 1
+        #print("run",self._n_times_run)
         #this would be a very nice spot to use nddata
-        self.x = np.r_[0:10.:500j]
-        self.line_data = np.sin(self.x/self.slider.value()*100)
+        print("slider min",
+                self.slider_min.value(),
+                "slider max",
+                self.slider_max.value())
+        self.x = np.r_[
+                self.slider_min.value():
+                self.slider_max.value():
+                500j]
+        self.line_data = abs(1/(2*np.pi*1j*(self.x-9820000)+10000/np.pi))
         return
     def on_draw(self):
         """ Redraws the figure
         """
-        str = self.textbox.text().encode('utf-8')
-        self.data = [int(s) for s in str.split()]
-        
-        x = range(len(self.data))
-
         # clear the axes and redraw the plot anew
         #
         self.axes.clear()        
@@ -134,39 +166,63 @@ class AppForm(QMainWindow):
         
         # Other GUI controls
         # 
-        self.textbox = QLineEdit()
-        self.textbox.setMinimumWidth(200)
-        self.textbox.editingFinished.connect(self.on_draw)
+        # {{{ text boxes control slider limits
+        self.textboxes_vbox = QVBoxLayout()
+        self.textbox1 = QLineEdit()
+        self.textbox2 = QLineEdit()
+
+        self.orig_zoom_limits()
+        # }}}
         
-        self.draw_button = QPushButton("&Draw")
+        # {{{ buttons
+        self.button_vbox = QVBoxLayout()
+        self.draw_button = QPushButton("&Re-Capture")
         self.draw_button.clicked.connect(self.on_draw)
+        self.button_vbox.addWidget(self.draw_button)
+        self.zoom_button = QPushButton("&Zoom Limits")
+        self.zoom_button.clicked.connect(self.on_zoomclicked)
+        self.button_vbox.addWidget(self.zoom_button)
+        # }}}
+
         
         self.grid_cb = QCheckBox("Show &Grid")
         self.grid_cb.setChecked(False)
         self.grid_cb.stateChanged.connect(self.on_draw)
         
         slider_label = QLabel('Bar width (%):')
-        self.slider = QSlider(Qt.Horizontal)
-        self.slider.setRange(1, 100)
-        self.slider.setValue(20)
-        self.slider.setTracking(True)
-        self.slider.setTickPosition(QSlider.TicksBothSides)
-        self.slider.valueChanged.connect(self.on_draw)
+
+        # {{{ box to stack sliders
+        self.slider_vbox = QVBoxLayout()
+        self.slider_vbox.setContentsMargins(0, 0, 0, 0)
+        #self.slider_vbox.setSpacing(0)
+        self.slider_min = QSlider(Qt.Horizontal)
+        self.slider_max = QSlider(Qt.Horizontal)
+        for ini_val,w in [(9819000,self.slider_min),
+                (9825000,self.slider_max)]:
+            self.on_textchange()
+            w.setValue(ini_val)
+            w.setTracking(True)
+            w.setTickPosition(QSlider.TicksBothSides)
+            w.valueChanged.connect(self.on_draw)
+            self.slider_vbox.addWidget(w)
+        # }}}
         
-        #
-        # Layout with box sizers
-        # 
+        # {{{ Layout with box sizers
         hbox = QHBoxLayout()
         
-        for w in [  self.textbox, self.draw_button, self.grid_cb,
-                    slider_label, self.slider]:
+        hbox.addLayout(self.textboxes_vbox) # requires a different command!
+        hbox.addLayout(self.button_vbox) # requires a different command!
+        for w in [  self.grid_cb,
+                    slider_label]:
             hbox.addWidget(w)
             hbox.setAlignment(w, Qt.AlignVCenter)
+        hbox.addLayout(self.slider_vbox) # requires a different command!
         
         vbox = QVBoxLayout()
         vbox.addWidget(self.canvas)
         vbox.addWidget(self.mpl_toolbar)
         vbox.addLayout(hbox)
+        # }}}
         
         self.main_frame.setLayout(vbox)
         self.setCentralWidget(self.main_frame)
@@ -220,10 +276,9 @@ class AppForm(QMainWindow):
 
 def main():
     app = QApplication(sys.argv)
-    form = AppForm()
+    form = TuningWindow()
     form.show()
     app.exec_()
-
 
 if __name__ == "__main__":
     main()
