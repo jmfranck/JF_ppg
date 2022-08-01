@@ -13,9 +13,9 @@ pyspecProcScripts
 Instruments
 
 	location --> c:\git\inst_notebooks\Instruments\__init__.py
-	branch: hp_power_supply
+	branch: jf_tweaks
 
-	hash: cf7334e4de573552b18f3f14eb862e0fc4bcb876
+	hash: 045c692b269e5a837b90a7cecd1c5c8cd2d88db4
 SpinCore_pp
 
 	location --> c:\apps-su\spincore_apps\SpinCore_pp\__init__.py
