@@ -9,6 +9,9 @@ which is a good layout reference
 
 JF updated to plot a sine wave
 """
+from Instruments import Bridge12
+from scipy.interpolate import interp1d
+import time
 import sys, os, random
 from PyQt5.QtCore import *
 from PyQt5.QtGui import *
@@ -22,15 +25,20 @@ from matplotlib.figure import Figure
 import numpy as np
 
 class TuningWindow(QMainWindow):
-    def __init__(self, parent=None):
+    def __init__(self, B12, parent=None):
+        self.B12 = B12
         QMainWindow.__init__(self, parent)
-        self.setWindowTitle('Demo: PyQt with matplotlib')
+        self.setWindowTitle('B12 tuning!')
+        self.setGeometry(20,20,1500,800)
 
         self.create_menu()
         self.create_main_frame()
         self.create_status_bar()
 
-        self.on_draw()
+        self._already_fmode = False
+        self.line_data = []
+        self.x = []
+        self.on_recapture()
         #self._n_times_run = 0
 
     def save_plot(self):
@@ -109,30 +117,96 @@ class TuningWindow(QMainWindow):
         QMessageBox.information(self, "Click!", msg)
     
     def generate_data(self):
-        #self._n_times_run += 1
-        #print("run",self._n_times_run)
-        #this would be a very nice spot to use nddata
         print("slider min",
                 self.slider_min.value(),
                 "slider max",
                 self.slider_max.value())
-        self.x = np.r_[
+        if len(self.line_data) > 6:
+            self.line_data.pop(0)
+            self.x.pop(0)
+        self.x.append(np.r_[
                 self.slider_min.value():
                 self.slider_max.value():
-                500j]
-        self.line_data = abs(1/(2*np.pi*1j*(self.x-9820000)+10000/np.pi))
+                15j])
+        temp, tx = self.B12.freq_sweep(self.x[-1]*1e3)
+        self.line_data.append(temp)
+        if hasattr(self,'interpdata'):
+            del self.interpdata
+            del self.dip_frq_GHz
+        return
+    def on_recapture(self):
+        self.generate_data()
+        self.on_draw()
         return
     def on_draw(self):
         """ Redraws the figure
         """
-        # clear the axes and redraw the plot anew
-        #
+        self.fmode = self.fmode_cb.isChecked()
         self.axes.clear()        
+        # clear the axes and redraw the plot anew
         self.axes.grid(self.grid_cb.isChecked())
-        self.generate_data()
-        self.axes.plot(self.x,self.line_data)
-        self.canvas.draw()
-    
+        if self.fmode:
+            if not self._already_fmode:
+                self.B12.set_freq(self.dip_frq_GHz*1e9)
+            #    if hasattr(self, 'frq_log'):
+            #        del self.frq_log
+            #        del self.rx_log
+            #    self.twin_ax = self.axes.twinx()
+            #    self.frq_log = []
+            #    self.time_log = []
+            #    self.rx_log = []
+            #self.frq_log.append(self.B12.freq_int())
+            #self.rx_log.append(self.B12.rxpowermv_float())
+            #self.axes.plot(self.frq_log)
+            #self.twin_ax.plot(self.rx_log)
+            #time.sleep(0.1)
+            self.axes.text(
+                    0.1,0.5,
+                    f"entered frequency mode with {self.dip_frq_GHz:0.6f} GHz",
+                    transform=self.axes.transAxes)
+            self.canvas.draw()
+        else:
+            self._already_fmode = False
+            for j in range(len(self.line_data)):
+                self.axes.plot(self.x[j]/1e6,self.line_data[j],'o-',
+                        alpha=0.5*(j+1)/len(self.line_data))
+            # {{{ for the last trace, interpolate, and find the min
+            if hasattr(self, 'interpdata'):
+                xx, yy = self.interpdata
+                dip_frq_GHz = self.dip_frq_GHz
+            else:
+                print("generating interpolation data")
+                x,y = self.x[-1], self.line_data[-1]
+                minidx = np.argmin(y)
+                zoomidx = np.r_[minidx-2:minidx+3]
+                print("1 zoomidx",zoomidx)
+                zoomidx = zoomidx[zoomidx < len(x)]
+                print("2 zoomidx",zoomidx)
+                zoomidx = zoomidx[zoomidx > 0]
+                print("3 zoomidx",zoomidx)
+                if len(zoomidx) > 3:
+                    whichkind = 'cubic'
+                elif len(zoomidx) > 2:
+                    whichkind = 'quadratic'
+                else:
+                    whichkind = 'linear'
+                f = interp1d(x[zoomidx], y[zoomidx], kind=whichkind)
+                xx = np.linspace(x[zoomidx[0]],
+                        x[zoomidx[-1]], 100)
+                yy = f(xx)
+                dip_frq_GHz = xx[np.argmin(yy)]/1e6
+                self.interpdata = xx, yy
+                self.dip_frq_GHz = dip_frq_GHz
+                # }}}
+            self.axes.plot(xx/1e6, yy, 'r', alpha=0.5)
+            self.axes.set_xlabel(r'$\nu_{B12}$ / GHz')
+            self.axes.set_ylabel(r'Rx / mV')
+            self.axes.axvline(x=dip_frq_GHz, ls='--', c='r')
+            self.B12.set_freq(dip_frq_GHz*1e9) # always do this, so that it should be safe to slightly turn up the power
+            self.axes.set_xlim(self.slider_min.value()/1e6,
+                    self.slider_max.value()/1e6)
+            self.canvas.draw()
+        return
     def create_main_frame(self):
         self.main_frame = QWidget()
         
@@ -177,7 +251,7 @@ class TuningWindow(QMainWindow):
         # {{{ buttons
         self.button_vbox = QVBoxLayout()
         self.draw_button = QPushButton("&Re-Capture")
-        self.draw_button.clicked.connect(self.on_draw)
+        self.draw_button.clicked.connect(self.on_recapture)
         self.button_vbox.addWidget(self.draw_button)
         self.zoom_button = QPushButton("&Zoom Limits")
         self.zoom_button.clicked.connect(self.on_zoomclicked)
@@ -185,9 +259,17 @@ class TuningWindow(QMainWindow):
         # }}}
 
         
+        # {{{ box to stack checkboxes
+        self.boxes_vbox = QVBoxLayout()
         self.grid_cb = QCheckBox("Show &Grid")
         self.grid_cb.setChecked(False)
         self.grid_cb.stateChanged.connect(self.on_draw)
+        self.boxes_vbox.addWidget(self.grid_cb)
+        self.fmode_cb = QCheckBox("Const &Frq &Mode")
+        self.fmode_cb.setChecked(False)
+        self.fmode_cb.stateChanged.connect(self.on_draw)
+        self.boxes_vbox.addWidget(self.fmode_cb)
+        # }}}
         
         slider_label = QLabel('Bar width (%):')
 
@@ -212,8 +294,8 @@ class TuningWindow(QMainWindow):
         
         hbox.addLayout(self.textboxes_vbox) # requires a different command!
         hbox.addLayout(self.button_vbox) # requires a different command!
-        for w in [  self.grid_cb,
-                    slider_label]:
+        hbox.addLayout(self.boxes_vbox) # requires a different command!
+        for w in [  slider_label]:
             hbox.addWidget(w)
             hbox.setAlignment(w, Qt.AlignVCenter)
         hbox.addLayout(self.slider_vbox) # requires a different command!
@@ -273,12 +355,18 @@ class TuningWindow(QMainWindow):
             action.setCheckable(True)
         return action
 
-
 def main():
     app = QApplication(sys.argv)
-    form = TuningWindow()
-    form.show()
-    app.exec_()
+    with Bridge12() as b:
+        b.set_wg(True)
+        b.set_rf(True)
+        b.set_amp(True)
+        time.sleep(5)
+        b.set_power(10.0)
+        tunwin = TuningWindow(b)
+        tunwin.show()
+        app.exec_()
+    print("dip found at",tunwin.dip_frq_GHz)
 
 if __name__ == "__main__":
     main()
