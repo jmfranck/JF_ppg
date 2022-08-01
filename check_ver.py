@@ -4,10 +4,11 @@ import os
 import pyspecdata
 import pyspecProcScripts
 import Instruments
+import SpinCore_pp
 import sys
 def dos2mingw(x):
     return os.path.split(os.path.normpath(x))[0].replace('C:\\','\\c\\').replace('\\','/')
-for thismodule in [pyspecdata, pyspecProcScripts]:
+for thismodule in [pyspecdata, pyspecProcScripts,Instruments,SpinCore_pp]:
     print(thismodule.__name__)
     print("\n\tlocation -->",thismodule.__file__,end="")
     os.chdir(dos2mingw(thismodule.__file__))

@@ -1,0 +1,24 @@
+pyspecdata
+
+	location --> c:\git\pyspecdata\pyspecdata\__init__.py
+	branch: master
+
+	hash: 2499d35894185a0b00c975961e66e343856973cb
+pyspecProcScripts
+
+	location --> c:\git\spincore_proc\pyspecProcScripts\__init__.py
+	branch: master
+
+	hash: 7aaa8d796371252ade9ffe10796c112278cf1e3a
+Instruments
+
+	location --> c:\git\inst_notebooks\Instruments\__init__.py
+	branch: hp_power_supply
+
+	hash: cf7334e4de573552b18f3f14eb862e0fc4bcb876
+SpinCore_pp
+
+	location --> c:\apps-su\spincore_apps\SpinCore_pp\__init__.py
+	branch: config_file
+
+	hash: f63ced99b17753b41c4839b125d4e1241dd02a8f
